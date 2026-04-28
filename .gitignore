@@ -16,6 +16,9 @@ target/
 ### Secrets ###
 satellite-tracker.properties
 .env
+.idea/
+*.iml
+target/
 
 ### Eclipse ###
 .apt_generated
