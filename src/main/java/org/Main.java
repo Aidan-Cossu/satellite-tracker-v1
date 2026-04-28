@@ -18,6 +18,9 @@ import com.google.gson.*;
 
 public class Main {
     public static void main(String[] args) throws Exception {
+        Database database = new Database();
+        database.createTable();
+
         // Delete this till
         String rootPath = Thread.currentThread().getContextClassLoader().getResource("").getPath();
         String appConfigPath = rootPath + "satellite-tracker.properties";
@@ -43,6 +46,9 @@ public class Main {
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() == 200) {
+
+
+
                 JsonObject rootObject = JsonParser.parseString(response.body()).getAsJsonObject();
 
                 JsonElement jsonInfoElement = rootObject.get("info");
@@ -51,7 +57,7 @@ public class Main {
                 JsonElement jsonPositionsElement = rootObject.get("positions");
                 JsonArray jsonPositionsArray = jsonPositionsElement.getAsJsonArray();
 
-                int satid = jsonInfoObject.get("satid").getAsInt();
+                int id = jsonInfoObject.get("satid").getAsInt();
                 String satname = jsonInfoObject.get("satname").getAsString();
 
                 JsonElement positions = jsonPositionsArray.get(0);
@@ -60,7 +66,9 @@ public class Main {
                 float satlongitude = positions.getAsJsonObject().get("satlongitude").getAsFloat();
                 float sataltitude = positions.getAsJsonObject().get("sataltitude").getAsFloat();
 
-                System.out.println("ID: " + satid +" \nname: " + satname + "\nLatitude: " + satlatitude + "\nLongitude: " + satlongitude + "\nAltitude: " + sataltitude + " KM");
+                database.savePosition(id, satname,  satlatitude, satlongitude, sataltitude);
+
+//                System.out.println("ID: " + id +" \nname: " + satname + "\nLatitude: " + satlatitude + "\nLongitude: " + satlongitude + "\nAltitude: " + sataltitude + " KM");
 //                System.out.println(response.body());
             } else {
                 System.out.println("Request failed with status: " + response.statusCode());

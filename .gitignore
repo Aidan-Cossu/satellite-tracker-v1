@@ -20,6 +20,8 @@ satellite-tracker.properties
 *.iml
 target/
 *.class
+*.db
+
 ### Eclipse ###
 .apt_generated
 .classpath
