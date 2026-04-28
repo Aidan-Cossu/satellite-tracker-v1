@@ -20,6 +20,7 @@ public class Main {
     public static void main(String[] args) throws Exception {
         Database database = new Database();
         database.createTable();
+        MapViewer mapViewer = new MapViewer();
 
         // Delete this till
         String rootPath = Thread.currentThread().getContextClassLoader().getResource("").getPath();
@@ -46,9 +47,6 @@ public class Main {
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() == 200) {
-
-
-
                 JsonObject rootObject = JsonParser.parseString(response.body()).getAsJsonObject();
 
                 JsonElement jsonInfoElement = rootObject.get("info");
@@ -67,6 +65,8 @@ public class Main {
                 float sataltitude = positions.getAsJsonObject().get("sataltitude").getAsFloat();
 
                 database.savePosition(id, satname,  satlatitude, satlongitude, sataltitude);
+
+                mapViewer.map((double) satlatitude, (double) satlongitude, satname);
 
 //                System.out.println("ID: " + id +" \nname: " + satname + "\nLatitude: " + satlatitude + "\nLongitude: " + satlongitude + "\nAltitude: " + sataltitude + " KM");
 //                System.out.println(response.body());
