@@ -19,7 +19,7 @@ satellite-tracker.properties
 .idea/
 *.iml
 target/
-
+*.class
 ### Eclipse ###
 .apt_generated
 .classpath
