@@ -7,16 +7,23 @@ import java.io.File;
 import java.io.IOException;
 
 public class MapViewer {
+    private BackgroundPanel panel;
 
-    public void map(Double satlatitude, Double satlongitude, String satname) throws IOException{
+    public void show(double lat, double lon, String name) throws IOException{
         Image icon = new ImageIcon("ISSIcon.png").getImage();
         JFrame frame = new JFrame("Satellite Tracker");
         frame.setSize(1200, 800);
-        frame.setContentPane(new BackgroundPanel("worldmap.png", satlatitude, satlongitude, satname));
+        panel = new BackgroundPanel("worldmap.png", lat, lon, name);
+        frame.setContentPane(panel);
         frame.setIconImage(icon);
         frame.setResizable(false);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setVisible(true);
+    }
+
+    public void updatePosition(double lat, double lon, String name) {
+        panel.updatePosition(lat, lon, name);
+
     }
 }
 
@@ -33,6 +40,14 @@ class BackgroundPanel extends JPanel {
         this.latitude = satlatitude;
         this.longitude = satlongitude;
         this.satname = satname;
+    }
+
+    public void updatePosition(double lat, double lon, String name) {
+        this.latitude = lat;
+        this.longitude = lon;
+        this.satname = name;
+
+        repaint();
     }
 
     public void setSatLatitude(Double satlatitude) {
