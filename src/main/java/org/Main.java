@@ -10,12 +10,16 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.time.Duration;
 import java.util.Properties;
+import java.util.Set;
 import java.util.Timer;
+import java.util.concurrent.ConcurrentHashMap;
 // endregion
 
 public class Main {
     public static void main(String[] args) throws Exception {
         try {
+            Set<String> selectedOrgs = ConcurrentHashMap.newKeySet();
+
             Database database = new Database();
             database.createTable();
             MapViewer mapViewer = new MapViewer();
@@ -40,15 +44,17 @@ public class Main {
                     .connectTimeout(Duration.ofSeconds(10))
                     .build();
 
+            FetchTask fetchTask = new FetchTask(client, API_KEY, database, mapViewer, locationClient, LOCATION_API_KEY, selectedOrgs);
+
             SwingUtilities.invokeLater(() -> {
                 try {
-                    mapViewer.show(0,0, 0,"name", false, "unknown");
+                    mapViewer.show(0,0, 0,"name", false, "unknown", selectedOrgs, fetchTask);
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
             });
 
-            timer.scheduleAtFixedRate(new FetchTask(client, API_KEY, database, mapViewer, locationClient, LOCATION_API_KEY), 0, 10000);
+            timer.scheduleAtFixedRate(fetchTask, 0, 10000);
         } catch (Exception e) {
             System.err.println("CRITICAL: Application failed to start.");
             e.printStackTrace();

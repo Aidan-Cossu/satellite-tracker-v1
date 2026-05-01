@@ -6,6 +6,7 @@ import java.awt.*;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
+import java.util.Set;
 
 public class MapViewer {
     private static final double EARTH_RADIUS_KM = 6371.0088;
@@ -27,7 +28,7 @@ public class MapViewer {
     private JLabel velVal;
     private JLabel locVal;
 
-    public void show(double lat, double lon, double alt, String name, boolean ecl, String loc) throws IOException{
+    public void show(double lat, double lon, double alt, String name, boolean ecl, String loc, Set<String> selectedOrgs, FetchTask fetchTask) throws IOException{
         Image icon = new ImageIcon("ISSIcon.png").getImage();
         JFrame frame = new JFrame("Satellite Tracker");
         frame.setSize(1200, 1000);
@@ -108,16 +109,17 @@ public class MapViewer {
         bottomPanel.setPreferredSize(new Dimension(950, 300));
         bottomPanel.setBackground(BG_DARK);
 
-        JPanel sidePanel = new JPanel();
-        sidePanel.setPreferredSize(new Dimension(250, 1000));
-        sidePanel.setBackground(BG_DARK);
+        SidePanel sidePanel = new SidePanel(selectedOrgs, fetchTask);
+        JPanel sidePanelContent = sidePanel.buildPanel();
+        sidePanelContent.setPreferredSize(new Dimension(250, 1000));
+        sidePanelContent.setBackground(BG_DARK);
 
         contentStack.add(mapPane, BorderLayout.NORTH);
         contentStack.add(centerPanel, BorderLayout.CENTER);
         contentStack.add(bottomPanel, BorderLayout.SOUTH);
 
         frame.setLayout(new BorderLayout());
-        frame.add(sidePanel, BorderLayout.WEST);
+        frame.add(sidePanelContent, BorderLayout.WEST);
         frame.add(contentStack, BorderLayout.CENTER);
 
         frame.setVisible(true);

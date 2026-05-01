@@ -15,6 +15,8 @@ import java.time.Duration;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.*;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
 
 public class FetchTask extends TimerTask {
     private final HttpClient fetchClient;
@@ -23,24 +25,32 @@ public class FetchTask extends TimerTask {
     private final Database fetchDatabase;
     private final MapViewer fetchMapViewer;
     private final String locationApiKey;
+    private final Set<String> selectedOrgs;
 
-    public FetchTask(HttpClient client, String API_KEY, Database database, MapViewer mapViewer, HttpClient locationClient, String locationApiKey) {
+    public FetchTask(HttpClient client, String API_KEY, Database database, MapViewer mapViewer, HttpClient locationClient, String locationApiKey, Set<String> selectedOrgs) {
         this.fetchClient = client;
         this.fetchLocationClient = locationClient;
         this.API_KEY = API_KEY;
         this.fetchDatabase = database;
         this.fetchMapViewer = mapViewer;
         this.locationApiKey = locationApiKey;
+        this.selectedOrgs = selectedOrgs;
     }
 
     @Override
     public void run() {
-        try {
-//            HttpResponse<String> response = this.fetchClient.send(this.API_KEY, HttpResponse.BodyHandlers.ofString());
+        fetchNow();
+    }
 
+    public void fetchNow() {
+        List<SatelliteRecord> filtered = SatelliteList.satellites().stream()
+                .filter(sat -> selectedOrgs.isEmpty() || selectedOrgs.contains(sat.organisation()))
+                .collect(Collectors.toList());
+
+        try {
             List<SatellitePosition> positions = new ArrayList<>();
 
-            for (SatelliteRecord satellite : SatelliteList.satellites()) {
+            for (SatelliteRecord satellite : filtered) {
                 String url = "https://api.n2yo.com/rest/v1/satellite/positions/" + satellite.noradId() + "/41.702/-76.014/0/2/&apiKey=" + API_KEY;
 
                 HttpRequest request = HttpRequest.newBuilder()
@@ -50,7 +60,6 @@ public class FetchTask extends TimerTask {
                         .build();
 
                 ZoneId cestZone = ZoneId.of("Europe/Brussels");
-
 
                 HttpResponse<String> response = fetchClient.send(request, HttpResponse.BodyHandlers.ofString());
 
@@ -87,15 +96,18 @@ public class FetchTask extends TimerTask {
                     HttpResponse<String> locationResponse = this.fetchLocationClient.send(locationRequest, HttpResponse.BodyHandlers.ofString());
                     JsonObject rootLocationObject = JsonParser.parseString(locationResponse.body()).getAsJsonObject();
 
-                    String satlocation = rootLocationObject.getAsJsonObject().get("countryName").getAsString();
+                    JsonElement countryElement = rootLocationObject.get("countryname");
+                    String satlocation = (countryElement != null && !countryElement.getAsString().isBlank())
+                            ? countryElement.getAsString()
+                            : "ocean/sea";
 
                     this.fetchDatabase.savePosition(id, satname,  satlatitude, satlongitude, sataltitude, cestNow);
 
                     positions.add(new SatellitePosition(satname, satlatitude, satlongitude, sataltitude, sateclipsed, satlocation));
 
-    //                System.out.println("ID: " + id +" \nname: " + satname + "\nLatitude: " + satlatitude + "\nLongitude: " + satlongitude + "\nAltitude: " + sataltitude + " KM");
-    //                System.out.println(response.body());
-    //                System.out.println(locationResponse.body());
+                    //                System.out.println("ID: " + id +" \nname: " + satname + "\nLatitude: " + satlatitude + "\nLongitude: " + satlongitude + "\nAltitude: " + sataltitude + " KM");
+                    //                System.out.println(response.body());
+                    //                System.out.println(locationResponse.body());
                 } else {
                     System.out.println("Request failed with status: " + response.statusCode());
                 }
@@ -121,6 +133,5 @@ public class FetchTask extends TimerTask {
                 throw new RuntimeException(ex);
             }
         }
-
     }
 }
