@@ -5,6 +5,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
 
 public class MapViewer {
     private static final double EARTH_RADIUS_KM = 6371.0088;
@@ -35,11 +36,14 @@ public class MapViewer {
 
         frame.setLayout(new BorderLayout());
 
-        mapPane = new BackgroundPanel("worldmap.jpg", lat, lon, name);
+        JPanel contentStack = new JPanel(new BorderLayout());
+        contentStack.setBackground(BG_DARK);
+
+        mapPane = new BackgroundPanel("worldmap.jpg");
         mapPane.setPreferredSize(new Dimension(1200, 625));
 
         JPanel centerPanel = new JPanel();
-        centerPanel.setPreferredSize(new Dimension(1200, 75));
+        centerPanel.setPreferredSize(new Dimension(950, 75));
         centerPanel.setBackground(PANEL);
 
         JLabel latTitle = new JLabel(" LAT: ");
@@ -55,7 +59,7 @@ public class MapViewer {
         JLabel locationTitle = new JLabel(" Loc: ");
         locVal = new JLabel("ocean/sea");
 
-        Font dataFont = new Font("Monospaced", Font.BOLD, 16);
+        Font dataFont = new Font("Monospaced", Font.BOLD, 12);
         latVal.setFont(dataFont);
         latVal.setForeground(TEXT_SECONDARY);
         latTitle.setFont(dataFont);
@@ -101,35 +105,44 @@ public class MapViewer {
         centerPanel.add(locVal);
 
         JPanel bottomPanel = new JPanel();
-        bottomPanel.setPreferredSize(new Dimension(1200, 300));
+        bottomPanel.setPreferredSize(new Dimension(950, 300));
         bottomPanel.setBackground(BG_DARK);
 
-        frame.add(mapPane, BorderLayout.NORTH);
-        frame.add(centerPanel, BorderLayout.CENTER);
-        frame.add(bottomPanel, BorderLayout.SOUTH);
+        JPanel sidePanel = new JPanel();
+        sidePanel.setPreferredSize(new Dimension(250, 1000));
+        sidePanel.setBackground(BG_DARK);
+
+        contentStack.add(mapPane, BorderLayout.NORTH);
+        contentStack.add(centerPanel, BorderLayout.CENTER);
+        contentStack.add(bottomPanel, BorderLayout.SOUTH);
+
+        frame.setLayout(new BorderLayout());
+        frame.add(sidePanel, BorderLayout.WEST);
+        frame.add(contentStack, BorderLayout.CENTER);
 
         frame.setVisible(true);
     }
 
-    public void updatePosition(double lat, double lon, double alt, String name, boolean eclipsed, String loc) {
+    public void updatePosition(List<SatellitePosition> satPosition) {
         SwingUtilities.invokeLater(() -> {
             if (mapPane != null) {
-                mapPane.updatePosition(lat, lon, name, eclipsed);
-                this.latVal.setText(String.format("%.4f", lat));
-                this.lonVal.setText(String.format("%.4f", lon));
-                this.altVal.setText(String.format("%.4f", alt));
-                this.eclipsedVal.setText(eclipsed ? "eclipsed" : "daylight");
+                mapPane.updatePosition(satPosition);
+                SatellitePosition first = satPosition.get(0);
+                this.latVal.setText(String.format("%.4f", first.lat()));
+                this.lonVal.setText(String.format("%.4f", first.lon()));
+                this.altVal.setText(String.format("%.4f", first.alt()));
+                this.eclipsedVal.setText(first.eclipsed() ? "eclipsed" : "daylight");
                 if (firstUpdate) {
                     this.velVal.setText(String.format("calculating..."));
                     firstUpdate = false;
                 } else {
-                    this.velVal.setText(String.format("%.4f", haversine(previousLat, previousLon, lat, lon)));
+                    this.velVal.setText(String.format("%.4f", haversine(previousLat, previousLon, first.lat(), first.lon())));
                 }
-                previousLat = lat;
-                previousLon = lon;
+                previousLat = first.lat();
+                previousLon = first.lon();
                 if (locVal != null) {
                     locVal.setText(
-                            (loc != null && !loc.isBlank()) ? loc : "ocean/sea"
+                            (first.location() != null && !first.location().isBlank()) ? first.location() : "ocean/sea"
                     );
                 }
             }
@@ -155,60 +168,37 @@ public class MapViewer {
 
 class BackgroundPanel extends JPanel {
     private final Image backgroundImage;
-    private int x;
-    private int y;
-    private double latitude;
-    private double longitude;
-    private String satname;
-    private Boolean satEclipsed;
+    List<SatellitePosition> satellitePosition;
 
-    public BackgroundPanel(String filePath, double satlatitude, double satlongitude, String satname) throws IOException {
+    public BackgroundPanel(String filePath) throws IOException {
         backgroundImage = ImageIO.read(new File(filePath));
-        this.latitude = satlatitude;
-        this.longitude = satlongitude;
-        this.satname = satname;
     }
 
-    public void updatePosition(double lat, double lon, String name, Boolean eclipsed) {
-        this.latitude = lat;
-        this.longitude = lon;
-        this.satname = name;
-        this.satEclipsed = eclipsed;
-
+    public void updatePosition(List<SatellitePosition> satellitePosition) {
+        this.satellitePosition = satellitePosition;
         repaint();
     }
-
-    public void setSatLatitude(Double satlatitude) {
-        this.latitude = satlatitude;
-    }
-
-    public void setSatLongitude(Double satlongitude) {
-        this.longitude = satlongitude;
-    }
-
-    public void setName(String satName) {
-        this.satname = satName;
-    }
-
-    public void satEclipsed(Boolean satEclipsed) {
-        this.satEclipsed = satEclipsed;
-    }
-
 
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         g.drawImage(backgroundImage, 0, 0, getWidth(), getHeight(), this);
 
-        x = (int) ((longitude + 180) / 360 * getWidth());
-        y = (int) ((90 - latitude) / 180 * getHeight());
+        if (satellitePosition == null) return;
+        for (SatellitePosition satellite : satellitePosition) {
+            int x;
+            int y;
 
-        g.setColor(new Color(63, 185, 255, 150));
-        g.fillOval(x - 7, y - 4, 18, 18);
-        g.setFont(new Font("Arial", Font.BOLD, 12));
-        g.setColor(Color.BLACK);
-        g.drawString(satname, x + 16, y + 11);
-        g.setColor(new Color(230, 237, 243));
-        g.drawString(satname, x + 15, y + 10);
+            x = (int) ((satellite.lon() + 180) / 360 * getWidth());
+            y = (int) ((90 - satellite.lat()) / 180 * getHeight());
+
+            g.setColor(new Color(63, 185, 255, 150));
+            g.fillOval(x - 7, y - 4, 18, 18);
+            g.setFont(new Font("Arial", Font.BOLD, 12));
+            g.setColor(Color.BLACK);
+            g.drawString(satellite.name(), x + 16, y + 11);
+            g.setColor(new Color(230, 237, 243));
+            g.drawString(satellite.name(), x + 15, y + 10);
+        }
     }
 }

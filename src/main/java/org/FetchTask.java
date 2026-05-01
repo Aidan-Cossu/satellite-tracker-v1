@@ -5,7 +5,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -15,22 +14,20 @@ import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.Properties;
-import java.util.TimerTask;
+import java.util.*;
 
 public class FetchTask extends TimerTask {
     private final HttpClient fetchClient;
-    private final HttpRequest fetchRequest;
     private final HttpClient fetchLocationClient;
+    private final String  API_KEY;
     private final Database fetchDatabase;
     private final MapViewer fetchMapViewer;
     private final String locationApiKey;
 
-    public FetchTask(HttpClient client, HttpRequest request, Database database, MapViewer mapViewer, HttpClient locationClient, String locationApiKey) {
+    public FetchTask(HttpClient client, String API_KEY, Database database, MapViewer mapViewer, HttpClient locationClient, String locationApiKey) {
         this.fetchClient = client;
-        this.fetchRequest = request;
         this.fetchLocationClient = locationClient;
+        this.API_KEY = API_KEY;
         this.fetchDatabase = database;
         this.fetchMapViewer = mapViewer;
         this.locationApiKey = locationApiKey;
@@ -38,61 +35,73 @@ public class FetchTask extends TimerTask {
 
     @Override
     public void run() {
-
         try {
-            HttpResponse<String> response = this.fetchClient.send(this.fetchRequest, HttpResponse.BodyHandlers.ofString());
+//            HttpResponse<String> response = this.fetchClient.send(this.API_KEY, HttpResponse.BodyHandlers.ofString());
 
-            if (response.statusCode() == 200) {
-                ZoneId cestZone = ZoneId.of("Europe/Brussels");
-                ZonedDateTime cestNow = ZonedDateTime.now(cestZone);
-                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("HH:mm:ss");
+            List<SatellitePosition> positions = new ArrayList<>();
 
-                JsonObject rootObject = JsonParser.parseString(response.body()).getAsJsonObject();
+            for (SatelliteRecord satellite : SatelliteList.satellites()) {
+                String url = "https://api.n2yo.com/rest/v1/satellite/positions/" + satellite.noradId() + "/41.702/-76.014/0/2/&apiKey=" + API_KEY;
 
-                JsonElement jsonInfoElement = rootObject.get("info");
-                JsonObject jsonInfoObject = jsonInfoElement.getAsJsonObject();
-
-                JsonElement jsonPositionsElement = rootObject.get("positions");
-                JsonArray jsonPositionsArray = jsonPositionsElement.getAsJsonArray();
-
-                int id = jsonInfoObject.get("satid").getAsInt();
-                String satname = jsonInfoObject.get("satname").getAsString();
-
-                JsonElement positions = jsonPositionsArray.get(0);
-                JsonElement locationPositions = jsonPositionsArray.get(0);
-
-                float satlatitude = positions.getAsJsonObject().get("satlatitude").getAsFloat();
-                float satlongitude = positions.getAsJsonObject().get("satlongitude").getAsFloat();
-                float sataltitude = positions.getAsJsonObject().get("sataltitude").getAsFloat();
-                boolean sateclipsed = positions.getAsJsonObject().get("eclipsed").getAsBoolean();
-
-                String locationURL = "https://api.bigdatacloud.net/data/reverse-geocode-client?latitude="
-                        + satlatitude + "&longitude=" + satlongitude + "&localityLanguage=en&key=" + locationApiKey;
-
-                HttpRequest locationRequest = HttpRequest.newBuilder()
-                        .uri(URI.create(locationURL))
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(url))
                         .timeout(Duration.ofSeconds(5))
                         .GET()
                         .build();
 
-                HttpResponse<String> locationResponse = this.fetchLocationClient.send(locationRequest, HttpResponse.BodyHandlers.ofString());
-                JsonObject rootLocationObject = JsonParser.parseString(locationResponse.body()).getAsJsonObject();
+                ZoneId cestZone = ZoneId.of("Europe/Brussels");
 
-                String satlocation = rootLocationObject.getAsJsonObject().get("countryName").getAsString();
 
-                this.fetchDatabase.savePosition(id, satname,  satlatitude, satlongitude, sataltitude, cestNow);
-                this.fetchMapViewer.updatePosition(satlatitude, satlongitude, sataltitude, satname, sateclipsed, satlocation);
+                HttpResponse<String> response = fetchClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-                String rootPath = Thread.currentThread().getContextClassLoader().getResource("").getPath();
+                if (response.statusCode() == 200) {
+                    JsonObject rootObject = JsonParser.parseString(response.body()).getAsJsonObject();
 
-                Properties satAppProps = new Properties();
+                    JsonElement jsonInfoElement = rootObject.get("info");
+                    JsonObject jsonInfoObject = jsonInfoElement.getAsJsonObject();
 
-//                System.out.println("ID: " + id +" \nname: " + satname + "\nLatitude: " + satlatitude + "\nLongitude: " + satlongitude + "\nAltitude: " + sataltitude + " KM");
-//                System.out.println(response.body());
-//                System.out.println(locationResponse.body());
-            } else {
-                System.out.println("Request failed with status: " + response.statusCode());
+                    JsonElement jsonPositionsElement = rootObject.get("positions");
+                    JsonArray jsonPositionsArray = jsonPositionsElement.getAsJsonArray();
+
+                    int id = jsonInfoObject.get("satid").getAsInt();
+                    String satname = jsonInfoObject.get("satname").getAsString();
+
+                    JsonElement positionElement = jsonPositionsArray.get(0);
+
+                    float satlatitude = positionElement.getAsJsonObject().get("satlatitude").getAsFloat();
+                    float satlongitude = positionElement.getAsJsonObject().get("satlongitude").getAsFloat();
+                    float sataltitude = positionElement.getAsJsonObject().get("sataltitude").getAsFloat();
+                    boolean sateclipsed = positionElement.getAsJsonObject().get("eclipsed").getAsBoolean();
+
+                    ZonedDateTime cestNow = ZonedDateTime.now(cestZone);
+
+                    String locationURL = "https://api.bigdatacloud.net/data/reverse-geocode-client?latitude="
+                            + satlatitude + "&longitude=" + satlongitude + "&localityLanguage=en&key=" + locationApiKey;
+
+                    HttpRequest locationRequest = HttpRequest.newBuilder()
+                            .uri(URI.create(locationURL))
+                            .timeout(Duration.ofSeconds(5))
+                            .GET()
+                            .build();
+
+                    HttpResponse<String> locationResponse = this.fetchLocationClient.send(locationRequest, HttpResponse.BodyHandlers.ofString());
+                    JsonObject rootLocationObject = JsonParser.parseString(locationResponse.body()).getAsJsonObject();
+
+                    String satlocation = rootLocationObject.getAsJsonObject().get("countryName").getAsString();
+
+                    this.fetchDatabase.savePosition(id, satname,  satlatitude, satlongitude, sataltitude, cestNow);
+
+                    positions.add(new SatellitePosition(satname, satlatitude, satlongitude, sataltitude, sateclipsed, satlocation));
+
+    //                System.out.println("ID: " + id +" \nname: " + satname + "\nLatitude: " + satlatitude + "\nLongitude: " + satlongitude + "\nAltitude: " + sataltitude + " KM");
+    //                System.out.println(response.body());
+    //                System.out.println(locationResponse.body());
+                } else {
+                    System.out.println("Request failed with status: " + response.statusCode());
+                }
             }
+
+            fetchMapViewer.updatePosition(positions);
         } catch (HttpTimeoutException e) {
             try {
                 throw new HttpTimeoutException(e.getMessage());

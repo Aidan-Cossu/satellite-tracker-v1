@@ -30,17 +30,10 @@ public class Main {
 
             String API_KEY = satAppProps.getProperty("api");
             // This and make a string as following: String API_KEY = "YOUR_API_KEY_HERE" -> "YOUR_API_KEY_HERE" Should be changed for the API key given by N2YO.com
-            String url = "https://api.n2yo.com/rest/v1/satellite/positions/25544/41.702/-76.014/0/2/&apiKey=" + API_KEY;
             String LOCATION_API_KEY = satAppProps.getProperty("locationapi");
 
             HttpClient client = HttpClient.newBuilder()
                     .connectTimeout(Duration.ofSeconds(10))
-                    .build();
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(5))
-                    .GET()
                     .build();
 
             HttpClient locationClient = HttpClient.newBuilder()
@@ -55,7 +48,7 @@ public class Main {
                 }
             });
 
-            timer.scheduleAtFixedRate(new FetchTask(client, request, database, mapViewer, locationClient, LOCATION_API_KEY), 0, 10000);
+            timer.scheduleAtFixedRate(new FetchTask(client, API_KEY, database, mapViewer, locationClient, LOCATION_API_KEY), 0, 10000);
         } catch (Exception e) {
             System.err.println("CRITICAL: Application failed to start.");
             e.printStackTrace();
