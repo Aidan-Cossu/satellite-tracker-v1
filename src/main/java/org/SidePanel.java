@@ -102,6 +102,8 @@ public class SidePanel {
             cardLayout.show(cardPanel, "main");
         });
 
+        showAll.setFont(dataFont);
+
         btnPrev.setBorderPainted(false);
         btnShowFilter.setBorderPainted(false);
         showAll.setBorderPainted(false);
