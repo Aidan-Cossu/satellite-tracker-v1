@@ -1,5 +1,12 @@
 package org;
 
+import javafx.application.Platform;
+import javafx.concurrent.Worker;
+import javafx.embed.swing.JFXPanel;
+import javafx.scene.Scene;
+import javafx.scene.web.WebEngine;
+import javafx.scene.web.WebView;
+import netscape.javascript.JSObject;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.axis.*;
@@ -35,7 +42,7 @@ public class MapViewer {
     private static final Color TEXT_PRIMARY = new Color(230, 237, 243);
     private static final Color TEXT_SECONDARY = new Color(154, 164, 178);
 
-    private BackgroundPanel mapPane;
+    private MapPanel mapPane;
     private JLabel latVal;
     private JLabel lonVal;
     private JLabel altVal;
@@ -130,7 +137,7 @@ public class MapViewer {
         Image icon = new ImageIcon("ISSIcon.png").getImage();
         JFrame frame = new JFrame("Satellite Tracker");
         frame.pack();
-        frame.setMinimumSize(new Dimension(1220, 1000));
+        frame.setMinimumSize(new Dimension(1510, 1000));
         frame.setSize(1200, 1000);
         frame.setLocationRelativeTo(null);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -146,9 +153,8 @@ public class MapViewer {
         contentStack.setBackground(BG_DARK);
         contentStack.setLayout(new BorderLayout());
 
-        mapPane = new BackgroundPanel("worldmap.jpg", satelliteName -> {
+        mapPane = new MapPanel(satelliteName -> {
             selectedSatellite = satelliteName;
-            mapPane.setSelectedSatellite(satelliteName);
         });
 
         mapPane.setPreferredSize(new Dimension(1200, 625));
@@ -216,7 +222,7 @@ public class MapViewer {
         centerPanel.add(locVal);
 
         bottomPanel = new JPanel();
-        bottomPanel.setPreferredSize(new Dimension(100, 500));
+        bottomPanel.setPreferredSize(new Dimension(700, 500));
         bottomPanel.setBackground(BG_DARK);
         bottomPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         bottomPanel.setLayout(new BoxLayout(bottomPanel, BoxLayout.Y_AXIS));
@@ -314,11 +320,13 @@ public class MapViewer {
 
                     double avgAlt = values.stream()
                             .mapToDouble(Database.Satellite::altitudeInKm)
+                            .filter(a -> a > 100 && a < 50000)
                             .average()
                             .orElse(0);
 
                     double avgVel = values.stream()
                             .mapToDouble(Database.Satellite::velocity)
+                            .filter(v -> v > 0 && v < 50000)
                             .average()
                             .orElse(0);
 
@@ -411,7 +419,7 @@ public class MapViewer {
     }
 
     public double distance3D(double lat1, double lon1, double alt1,
-                              double lat2, double lon2, double alt2) {
+                             double lat2, double lon2, double alt2) {
 
         double r1 = EARTH_RADIUS_KM + alt1;
         double r2 = EARTH_RADIUS_KM + alt2;
@@ -453,73 +461,162 @@ public class MapViewer {
     }
 }
 
+class MapPanel extends JPanel {
 
-class BackgroundPanel extends JPanel {
-    private final Image backgroundImage;
-    List<SatellitePosition> satellitePosition;
-    private final Map<String, Point> dotPositions = new HashMap<>();
+    private final JFXPanel fxPanel = new JFXPanel();
+    private WebEngine webEngine;
+    private boolean ready = false;
     private final Consumer<String> onSatelliteClicked;
-    private String selectedSatellite;
+    private List<SatellitePosition> pendingUpdate = null;
+    private JavaBridge bridge;
 
-    public BackgroundPanel(String filePath, Consumer<String> onSatelliteCLicked) throws IOException {
-        backgroundImage = ImageIO.read(new File(filePath));
-        this.onSatelliteClicked = onSatelliteCLicked;
+    public MapPanel(Consumer<String> onSatelliteClicked) {
+        this.onSatelliteClicked = onSatelliteClicked;
+        setLayout(new BorderLayout());
+        add(fxPanel, BorderLayout.CENTER);
 
-        addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                for (Map.Entry<String, Point> entry : dotPositions.entrySet()) {
-                    Point dot = entry.getValue();
-                    double distance = Math.sqrt(
-                            Math.pow(e.getX() - dot.x, 2) + Math.pow(e.getY() - dot.y, 2)
+        Platform.runLater(() -> {
+            WebView webView = new WebView();
+            webEngine = webView.getEngine();
+            fxPanel.setScene(new Scene(webView));
+
+            URL url = getClass().getResource("/map/map.html");
+            if (url == null) { System.out.println("map.html not found"); return; }
+
+            webEngine.load(url.toExternalForm());
+
+            webEngine.getLoadWorker().stateProperty().addListener((obs, old, state) -> {
+                if (state == Worker.State.SUCCEEDED) {
+                    webEngine.executeScript(
+                            "console.log = function() {" +
+                                    "  var args = Array.prototype.slice.call(arguments);" +
+                                    "  window.javaBridge.log(args.join(' '));" +
+                                    "};"
                     );
-                    if (distance <= 9) {
-                        onSatelliteCLicked.accept(entry.getKey());
-                        break;
+                    ready = true;
+
+                    bridge = new JavaBridge();
+                    JSObject window = (JSObject) webEngine.executeScript("window");
+                    window.setMember("javaBridge", bridge);
+                    webEngine.executeScript(
+                            "window.onSatelliteClicked = function(name) { window.javaBridge.onClicked(name); };"
+                    );
+
+                    if (pendingUpdate != null) {
+                        pushToJS(pendingUpdate);
+                        pendingUpdate = null;
                     }
                 }
-            }
-
+            });
         });
     }
 
-    public void updatePosition(List<SatellitePosition> satellitePosition) {
-        this.satellitePosition = satellitePosition;
-        repaint();
+    public class JavaBridge {
+        public void onClicked(String name) {
+//            System.out.println("JAVA: onClicked fired with: " + name);
+            SwingUtilities.invokeLater(() -> onSatelliteClicked.accept(name));
+        }
+
+        public void log(String msg) {
+            System.out.println("JS: " + msg);
+        }
     }
 
-    public void setSelectedSatellite(String name) {
-        this.selectedSatellite = name;
-        repaint();
-    }
+    public void updatePosition(List<SatellitePosition> satPosition) {
+        if (satPosition == null) return;
 
-    @Override
-    protected void paintComponent(Graphics g) {
-
-        super.paintComponent(g);
-        g.drawImage(backgroundImage, 0, 0, getWidth(), getHeight(), this);
-
-        if (satellitePosition == null) return;
-        for (SatellitePosition satellite : satellitePosition) {
-            int x;
-            int y;
-
-            x = (int) ((satellite.lon() + 180) / 360 * getWidth());
-            y = (int) ((90 - satellite.lat()) / 180 * getHeight());
-
-            dotPositions.put(satellite.name(), new Point(x, y));
-
-            if (satellite.name().equals(selectedSatellite)) {
-                g.setColor(new Color(255,200, 0, 200));
-            } else {
-                g.setColor(new Color(63, 185, 255, 150));
+        Platform.runLater(() -> {
+            if (!ready || webEngine == null) {
+                pendingUpdate = satPosition; // queue it
+                return;
             }
-            g.fillOval(x - 7, y - 4, 18, 18);
-            g.setFont(new Font("Arial", Font.BOLD, 12));
-            g.setColor(Color.BLACK);
-            g.drawString(satellite.name(), x + 16, y + 11);
-            g.setColor(new Color(230, 237, 243));
-            g.drawString(satellite.name(), x + 15, y + 10);
+            pushToJS(satPosition);
+        });
+    }
+
+    private void pushToJS(List<SatellitePosition> satPosition) {
+        try {
+            StringBuilder js = new StringBuilder("window.updateSatellites([");
+            for (SatellitePosition s : satPosition) {
+                js.append("{lat:").append(s.lat())
+                        .append(",lon:").append(s.lon())
+                        .append(",name:'").append(s.name().replace("'", "")).append("'},");
+            }
+            js.append("]);");
+            webEngine.executeScript(js.toString());
+        } catch (Exception e) {
+            System.out.println("JS error: " + e.getMessage());
         }
     }
 }
+
+
+//class BackgroundPanel extends JPanel {
+//    private final Image backgroundImage;
+//    List<SatellitePosition> satellitePosition;
+//    private final Map<String, Point> dotPositions = new HashMap<>();
+//    private final Consumer<String> onSatelliteClicked;
+//    private String selectedSatellite;
+//
+//    public BackgroundPanel(String filePath, Consumer<String> onSatelliteCLicked) throws IOException {
+//        backgroundImage = ImageIO.read(new File(filePath));
+//        this.onSatelliteClicked = onSatelliteCLicked;
+//
+//        addMouseListener(new MouseAdapter() {
+//            @Override
+//            public void mouseClicked(MouseEvent e) {
+//                for (Map.Entry<String, Point> entry : dotPositions.entrySet()) {
+//                    Point dot = entry.getValue();
+//                    double distance = Math.sqrt(
+//                            Math.pow(e.getX() - dot.x, 2) + Math.pow(e.getY() - dot.y, 2)
+//                    );
+//                    if (distance <= 9) {
+//                        onSatelliteCLicked.accept(entry.getKey());
+//                        break;
+//                    }
+//                }
+//            }
+//
+//        });
+//    }
+//
+//    public void updatePosition(List<SatellitePosition> satellitePosition) {
+//        this.satellitePosition = satellitePosition;
+//        repaint();
+//    }
+//
+//    public void setSelectedSatellite(String name) {
+//        this.selectedSatellite = name;
+//        repaint();
+//    }
+//
+//    @Override
+//    protected void paintComponent(Graphics g) {
+//
+//        super.paintComponent(g);
+//        g.drawImage(backgroundImage, 0, 0, getWidth(), getHeight(), this);
+//
+//        if (satellitePosition == null) return;
+//        for (SatellitePosition satellite : satellitePosition) {
+//            int x;
+//            int y;
+//
+//            x = (int) ((satellite.lon() + 180) / 360 * getWidth());
+//            y = (int) ((90 - satellite.lat()) / 180 * getHeight());
+//
+//            dotPositions.put(satellite.name(), new Point(x, y));
+//
+//            if (satellite.name().equals(selectedSatellite)) {
+//                g.setColor(new Color(255,200, 0, 200));
+//            } else {
+//                g.setColor(new Color(63, 185, 255, 150));
+//            }
+//            g.fillOval(x - 7, y - 4, 18, 18);
+//            g.setFont(new Font("Arial", Font.BOLD, 12));
+//            g.setColor(Color.BLACK);
+//            g.drawString(satellite.name(), x + 16, y + 11);
+//            g.setColor(new Color(230, 237, 243));
+//            g.drawString(satellite.name(), x + 15, y + 10);
+//        }
+//    }
+//}
