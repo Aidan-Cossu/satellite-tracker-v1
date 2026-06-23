@@ -17,6 +17,10 @@ public class SidePanel {
     private final Set<String> selectedOrgs;
     private final FetchTask fetchTask;
 
+    private final List<JLabel> allLabels = new ArrayList<>();
+    private final List<JButton> allButtons = new ArrayList<>();
+    private final List<JPanel> allPanels = new ArrayList<>();
+
     public SidePanel(Set<String> selectedOrgs, FetchTask fetchTask) {
         this.selectedOrgs = selectedOrgs;
         this.fetchTask = fetchTask;
@@ -50,6 +54,10 @@ public class SidePanel {
         JButton showAll = new JButton("show all");
         JButton btnPrev = new JButton("go back");
         JButton btnShowFilter = new JButton("filter");
+
+        allButtons.add(showAll);
+        allButtons.add(btnPrev);
+        allButtons.add(btnShowFilter);
 
         main.add(showAll);
 
@@ -89,6 +97,10 @@ public class SidePanel {
 
             orgPanels.add(orgPanel);
             orgLabels.add(orgLabel);
+
+            allPanels.add(orgPanel);
+            allLabels.add(orgLabel);
+
             filter.add(orgPanel);
         }
 
@@ -141,5 +153,27 @@ public class SidePanel {
         main.add(btnShowFilter);
 
         return cardPanel;
+    }
+
+    public void scaleFonts(double scale) {
+        int fontSize = Math.max(12, (int)(12 * scale));
+        Font font = new Font("Monospaced", Font.BOLD, fontSize);
+
+        int rowHeight = Math.max(40, (int)(40 * scale));
+
+        for (JButton b : allButtons) {
+            b.setFont(font);
+            b.setMaximumSize(new Dimension(Integer.MAX_VALUE, rowHeight));
+            b.setPreferredSize(new Dimension(0, rowHeight));
+        }
+
+        for (JLabel l : allLabels) {
+            l.setFont(font);
+        }
+
+        for (JPanel p : allPanels) {
+            p.setMaximumSize(new Dimension(Integer.MAX_VALUE, rowHeight));
+            p.setPreferredSize(new Dimension(0, rowHeight));
+        }
     }
 }

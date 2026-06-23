@@ -201,7 +201,7 @@
         function updateDateNight(time) {
             var sunPosition = solarPosition(time);
 
-            var customOffset = -152;
+            var customOffset = -40;
 
             sunDataItem.set("longitude", sunPosition.longitude);
             sunDataItem.set("latitude", sunPosition.latitude);
@@ -327,7 +327,6 @@
         function eccentricityEarthOrbit(centuries) {
             return 0.016708634 - centuries * (0.000042037 + 0.0000001267 * centuries);
         }
-
     }); // end am5.ready()
 </script>
 

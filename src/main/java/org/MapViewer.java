@@ -158,9 +158,11 @@ public class MapViewer {
         });
 
         mapPane.setPreferredSize(new Dimension(1200, 625));
+        mapPane.setMinimumSize(new Dimension(800, 400));
 
         JPanel centerPanel = new JPanel();
         centerPanel.setPreferredSize(new Dimension(950, 30));
+        centerPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
         centerPanel.setBackground(PANEL);
 
         JLabel latTitle = new JLabel(" LAT: ");
@@ -233,25 +235,49 @@ public class MapViewer {
         scrollPane.setBorder(null);
         scrollPane.getViewport().setBorder(null);
         scrollPane.setPreferredSize(new Dimension(950, 500));
+        scrollPane.setMaximumSize(new Dimension(Integer.MAX_VALUE, 370));
 
         SidePanel sidePanel = new SidePanel(selectedOrgs, fetchTask);
         JPanel sidePanelContent = sidePanel.buildPanel();
         sidePanelContent.setPreferredSize(new Dimension(250, 1000));
         sidePanelContent.setBackground(BG_DARK);
 
-        JPanel middleContainer = new JPanel(new BorderLayout());
-        middleContainer.add(centerPanel, BorderLayout.NORTH);
-        middleContainer.add(scrollPane, BorderLayout.CENTER);
+        JPanel bottomWrapper = new JPanel(new BorderLayout());
+        bottomWrapper.setBackground(BG_DARK);
+        bottomWrapper.add(centerPanel, BorderLayout.NORTH);
+        bottomWrapper.add(scrollPane, BorderLayout.CENTER);
+
+        bottomWrapper.setPreferredSize(new Dimension(1200,  335));
+        bottomWrapper.setMaximumSize(new Dimension(Integer.MAX_VALUE, 400));
 
         contentStack.removeAll();
-        contentStack.add(mapPane, BorderLayout.NORTH);
-        contentStack.add(middleContainer, BorderLayout.CENTER);
+        contentStack.setLayout(new BoxLayout(contentStack, BoxLayout.Y_AXIS));
+        contentStack.add(mapPane);
+        contentStack.add(bottomWrapper);
 
         frame.setLayout(new BorderLayout());
         frame.add(sidePanelContent, BorderLayout.WEST);
         frame.add(contentStack, BorderLayout.CENTER);
 
         frame.setVisible(true);
+
+        frame.addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+
+                double scale = 1.0 + ((frame.getWidth() - 1200) / 1200.0) * 0.75;
+                scale = Math.clamp(scale, 1.0, 1.5);
+
+                int newWidth = (int)(250 * scale);
+
+                newWidth = Math.clamp(newWidth, 250, 500);
+
+                sidePanelContent.setPreferredSize(new Dimension(newWidth, frame.getHeight()));
+                sidePanel.scaleFonts(scale);
+
+                frame.revalidate();
+            }
+        });
     }
 
     public void updatePosition(List<SatellitePosition> satPosition) {
