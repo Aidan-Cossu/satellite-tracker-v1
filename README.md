@@ -103,13 +103,16 @@ new SatelliteRecord("HST", ...),
 In this example, ISS and HST are enabled while TERRA is disabled.
 
 ## Project Structure
-src/ 
-├── main/ 
-│ ├── java/ 
-│ │ └── ... 
-│ └── resources/ 
-│     ├── satellite-tracker.properties 
-│     └── ...
+
+```
+src/
+├── main/
+│   ├── java/
+│   │   └── ...
+│   └── resources/
+│       ├── satellite-tracker.properties
+│       └── ...
+```
 
 The main Java code handles the application logic, data retrieval, database interaction, and user interface.
 
