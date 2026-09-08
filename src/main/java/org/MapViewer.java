@@ -17,12 +17,8 @@ import org.jfree.data.xy.XYDataItem;
 import org.jfree.data.xy.XYSeries;
 import org.jfree.data.xy.XYSeriesCollection;
 
-import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.io.File;
 import java.io.IOException;
 import java.net.URL;
 import java.text.SimpleDateFormat;
@@ -34,7 +30,6 @@ public class MapViewer {
     private static final double EARTH_RADIUS_KM = 6371.0088;
     private double previousLat;
     private double previousLon;
-    private boolean firstUpdate = true;
 
     private static final Color BG_DARK = new Color(11, 15, 26);
     private static final Color PANEL = new Color(18, 24, 38);
@@ -59,8 +54,18 @@ public class MapViewer {
 
     private String selectedSatellite;
 
+    private SidePanel sidePanel;
+
     private Database.Satellite satellite;
     private final Database db = new Database();
+
+    private final TLEFetcher tleFetcher;
+    private final OrbitPredictor orbitPredictor;
+
+    public MapViewer(TLEFetcher tleFetcher, OrbitPredictor orbitPredictor) {
+        this.tleFetcher = tleFetcher;
+        this.orbitPredictor = orbitPredictor;
+    }
 
     private ChartPanel createChartPanel(String title, String yAxisLabel, XYSeriesCollection dataset, String[] labels, double padding) {
         SymbolAxis xAxis = new SymbolAxis("Time", labels);
@@ -68,7 +73,6 @@ public class MapViewer {
         xAxis.setTickLabelPaint(Color.WHITE);
         xAxis.setLabelPaint(Color.WHITE);
 
-//        xAxis.setTickUnit(new DateTickUnit(DateTickUnitType.MINUTE, 15));
         xAxis.setAutoTickUnitSelection(false);
 
         xAxis.setVerticalTickLabels(false);
@@ -155,9 +159,12 @@ public class MapViewer {
 
         mapPane = new MapPanel(satelliteName -> {
             selectedSatellite = satelliteName;
+            mapPane.setSelectedSatellite(satelliteName);
+            if (sidePanel != null) sidePanel.updateNotes(satelliteName);
+            fetchTrajectory(satelliteName);
         });
 
-        mapPane.setPreferredSize(new Dimension(1200, 625));
+        mapPane.setPreferredSize(new Dimension(0, 625));
         mapPane.setMinimumSize(new Dimension(800, 400));
 
         JPanel centerPanel = new JPanel();
@@ -237,7 +244,9 @@ public class MapViewer {
         scrollPane.setPreferredSize(new Dimension(950, 500));
         scrollPane.setMaximumSize(new Dimension(Integer.MAX_VALUE, 370));
 
-        SidePanel sidePanel = new SidePanel(selectedOrgs, fetchTask);
+        sidePanel = new SidePanel(selectedOrgs, fetchTask, minutes -> {
+            if (selectedSatellite != null) fetchTrajectory(selectedSatellite);
+        });
         JPanel sidePanelContent = sidePanel.buildPanel();
         sidePanelContent.setPreferredSize(new Dimension(250, 1000));
         sidePanelContent.setBackground(BG_DARK);
@@ -252,8 +261,8 @@ public class MapViewer {
 
         contentStack.removeAll();
         contentStack.setLayout(new BoxLayout(contentStack, BoxLayout.Y_AXIS));
-        contentStack.add(mapPane);
-        contentStack.add(bottomWrapper);
+        contentStack.add(mapPane, BorderLayout.CENTER);
+        contentStack.add(bottomWrapper, BorderLayout.SOUTH);
 
         frame.setLayout(new BorderLayout());
         frame.add(sidePanelContent, BorderLayout.WEST);
@@ -278,6 +287,21 @@ public class MapViewer {
                 frame.revalidate();
             }
         });
+    }
+
+    private void fetchTrajectory(String satelliteName) {
+        SatelliteList.satellites().stream()
+                .filter(s -> s.name().equals(satelliteName))
+                .findFirst()
+                .ifPresent(s -> new Thread(() -> {
+                    try {
+                        TLEData tle = tleFetcher.fetch(s.noradId());
+                        List<double[]> trajectory = orbitPredictor.predict(tle, sidePanel.getTrajectoryMinutes(), 2);
+                        mapPane.setTrajectory(trajectory);
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                    }
+                }).start());
     }
 
     public void updatePosition(List<SatellitePosition> satPosition) {
@@ -328,13 +352,6 @@ public class MapViewer {
                 for (int i = 0; i < last7Buckets.size(); i++) {
                     labels[i] = format.format(new Date(last7Buckets.get(i)));
                 }
-
-//                #################
-//                for (long bucket : last7Buckets) {
-//                    System.out.println(
-//                            new SimpleDateFormat("HH:mm").format(new Date(bucket))
-//                    );
-//                }
 
                 XYSeries altitudeSeries = new XYSeries("Altitude");
                 XYSeries velocitySeries = new XYSeries("Velocity");
@@ -537,6 +554,37 @@ class MapPanel extends JPanel {
         });
     }
 
+    public void setSelectedSatellite(String name) {
+        if (!ready || webEngine == null) return;
+        Platform.runLater(() ->
+                webEngine.executeScript("window.setSelectedSatellite('" + name.replace("'", "") + "')"));
+    }
+
+    public void setTrajectory(List<double[]> trajectory) {
+        if (!ready || webEngine == null) {
+            return;
+        }
+
+        Platform.runLater(() -> {
+            StringBuilder js = new StringBuilder();
+
+            js.append("window.setTrajectory([");
+
+            for (double[] p : trajectory) {
+                js.append("{lat:")
+                        .append(p[0])
+                        .append(",lon:")
+                        .append(p[1])
+                        .append("},");
+            }
+
+            js.append("]);");
+
+            System.out.println(js);
+            webEngine.executeScript(js.toString());
+        });
+    }
+
     public class JavaBridge {
         public void onClicked(String name) {
 //            System.out.println("JAVA: onClicked fired with: " + name);
@@ -575,74 +623,3 @@ class MapPanel extends JPanel {
         }
     }
 }
-
-
-//class BackgroundPanel extends JPanel {
-//    private final Image backgroundImage;
-//    List<SatellitePosition> satellitePosition;
-//    private final Map<String, Point> dotPositions = new HashMap<>();
-//    private final Consumer<String> onSatelliteClicked;
-//    private String selectedSatellite;
-//
-//    public BackgroundPanel(String filePath, Consumer<String> onSatelliteCLicked) throws IOException {
-//        backgroundImage = ImageIO.read(new File(filePath));
-//        this.onSatelliteClicked = onSatelliteCLicked;
-//
-//        addMouseListener(new MouseAdapter() {
-//            @Override
-//            public void mouseClicked(MouseEvent e) {
-//                for (Map.Entry<String, Point> entry : dotPositions.entrySet()) {
-//                    Point dot = entry.getValue();
-//                    double distance = Math.sqrt(
-//                            Math.pow(e.getX() - dot.x, 2) + Math.pow(e.getY() - dot.y, 2)
-//                    );
-//                    if (distance <= 9) {
-//                        onSatelliteCLicked.accept(entry.getKey());
-//                        break;
-//                    }
-//                }
-//            }
-//
-//        });
-//    }
-//
-//    public void updatePosition(List<SatellitePosition> satellitePosition) {
-//        this.satellitePosition = satellitePosition;
-//        repaint();
-//    }
-//
-//    public void setSelectedSatellite(String name) {
-//        this.selectedSatellite = name;
-//        repaint();
-//    }
-//
-//    @Override
-//    protected void paintComponent(Graphics g) {
-//
-//        super.paintComponent(g);
-//        g.drawImage(backgroundImage, 0, 0, getWidth(), getHeight(), this);
-//
-//        if (satellitePosition == null) return;
-//        for (SatellitePosition satellite : satellitePosition) {
-//            int x;
-//            int y;
-//
-//            x = (int) ((satellite.lon() + 180) / 360 * getWidth());
-//            y = (int) ((90 - satellite.lat()) / 180 * getHeight());
-//
-//            dotPositions.put(satellite.name(), new Point(x, y));
-//
-//            if (satellite.name().equals(selectedSatellite)) {
-//                g.setColor(new Color(255,200, 0, 200));
-//            } else {
-//                g.setColor(new Color(63, 185, 255, 150));
-//            }
-//            g.fillOval(x - 7, y - 4, 18, 18);
-//            g.setFont(new Font("Arial", Font.BOLD, 12));
-//            g.setColor(Color.BLACK);
-//            g.drawString(satellite.name(), x + 16, y + 11);
-//            g.setColor(new Color(230, 237, 243));
-//            g.drawString(satellite.name(), x + 15, y + 10);
-//        }
-//    }
-//}

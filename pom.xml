@@ -51,6 +51,12 @@
             <version>27-ea+20</version>
             <scope>compile</scope>
         </dependency>
+
+        <dependency>
+            <groupId>org.orekit</groupId>
+            <artifactId>orekit</artifactId>
+            <version>13.1.6</version>
+        </dependency>
     </dependencies>
 
     <build>

@@ -1,7 +1,11 @@
 package org;
 
 //region Imports
+import org.orekit.data.DataContext;
+import org.orekit.data.DirectoryCrawler;
+
 import javax.swing.*;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.http.HttpClient;
@@ -13,7 +17,12 @@ import java.util.concurrent.ConcurrentHashMap;
 // endregion
 
 public class Main {
+
     public static void main(String[] args) throws Exception {
+        File orekitData = new File(Main.class.getResource("/orekit-data").toURI());
+        DataContext.getDefault().getDataProvidersManager()
+                .addProvider(new DirectoryCrawler(orekitData));
+
         try {
             Set<String> selectedOrgs = ConcurrentHashMap.newKeySet();
 
@@ -27,7 +36,6 @@ public class Main {
 
             Database database = new Database();
             database.createTable();
-            MapViewer mapViewer = new MapViewer();
             Timer timer = new Timer();
 
             // Delete this till
@@ -40,6 +48,11 @@ public class Main {
             String API_KEY = satAppProps.getProperty("api");
             // This and make a string as following: String API_KEY = "YOUR_API_KEY_HERE" -> "YOUR_API_KEY_HERE" Should be changed for the API key given by N2YO.com
             String LOCATION_API_KEY = satAppProps.getProperty("locationapi");
+
+            TLEFetcher tleFetcher = new TLEFetcher(client, API_KEY);
+            OrbitPredictor orbitPredictor = new OrbitPredictor();
+
+            MapViewer mapViewer = new MapViewer(tleFetcher, orbitPredictor);
 
             FetchTask fetchTask = new FetchTask(client, API_KEY, database, mapViewer, locationClient, LOCATION_API_KEY, selectedOrgs);
 

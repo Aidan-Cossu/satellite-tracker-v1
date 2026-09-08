@@ -161,9 +161,6 @@ public class FetchTask extends TimerTask {
 
                     this.fetchDatabase.savePosition(id, satname, satlatitude, satlongitude, sataltitude, cestNow, smoothed, String.valueOf(sateclipsed ? "eclipsed" : "daylight"), satlocation);
 
-                    //                System.out.println("ID: " + id +" \nname: " + satname + "\nLatitude: " + satlatitude + "\nLongitude: " + satlongitude + "\nAltitude: " + sataltitude + " KM");
-                    //                System.out.println(response.body());
-//                                    System.out.println(locationResponse.body());
                 } else {
                     System.out.println("Request failed with status: " + response.statusCode());
                 }

@@ -27,7 +27,6 @@ public class Database {
         try (Connection connection = DriverManager.getConnection(DB_URL);
              Statement statement = connection.createStatement()) {
             statement.execute(sql);
-//            System.out.println("Table created successfully");
         } catch (SQLException e) {
                  e.printStackTrace();
         }

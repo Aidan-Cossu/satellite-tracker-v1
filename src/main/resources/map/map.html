@@ -38,6 +38,15 @@
 
 // Create the map chart
 // https://www.amcharts.com/docs/v5/charts/map-chart/
+        var selectedSatelliteName = null;
+
+        window.setSelectedSatellite = function(name) {
+            selectedSatelliteName = name;
+            satelliteSeries.data.each(function(dataItem) {
+                satelliteSeries.data.setAll(satelliteSeries.data.values);
+            });
+        };
+
         var chart = root.container.children.push(am5map.MapChart.new(root, {
             panX: false,
             panY: false,
@@ -91,11 +100,13 @@
         satelliteSeries.bullets.push(function(root, series, dataItem) {
             var container = am5.Container.new(root, { cursorOverStyle: "pointer" });
 
+            var isSelected = dataItem.dataContext && dataItem.dataContext.name === selectedSatelliteName;
+
             var circle = am5.Circle.new(root, {
-                radius: 6,
-                fill: am5.color(0x3fb9ff),
+                radius: isSelected ? 9 : 6,
+                fill: am5.color(isSelected ? 0xffc300 : 0x3fb9ff),
                 stroke: am5.color(0xffffff),
-                strokeWidth: 1
+                strokeWidth: isSelected ? 2 : 1
             });
 
             var label = am5.Label.new(root, {
@@ -130,39 +141,10 @@
             });
             satelliteSeries.data.setAll(data);
         };
+
 // Create point series for Sun icon
 // https://www.amcharts.com/docs/v5/charts/map-chart/map-point-series/
         var sunSeries = chart.series.push(am5map.MapPointSeries.new(root, {}));
-
-        // sunSeries.bullets.push(function () {
-        //     var circle = am5.Circle.new(root, {
-        //         radius: 18,
-        //         fill: am5.color(0xffba00),
-        //         filter: "blur(5px)"
-        //     });
-        //
-        //     circle.animate({
-        //         key: "radius",
-        //         duration: 2000,
-        //         to: 23,
-        //         loops: Infinity,
-        //         easing: am5.ease.yoyo(am5.ease.linear)
-        //     });
-        //
-        //     return am5.Bullet.new(root, {
-        //         sprite: circle
-        //     });
-        // });
-
-        // sunSeries.bullets.push(function () {
-        //     return am5.Bullet.new(root, {
-        //         sprite: am5.Circle.new(root, {
-        //             radius: 14,
-        //             fill: am5.color(0xffba00)
-        //         })
-        //     });
-        // });
-
         var sunDataItem = sunSeries.pushDataItem({});
 
 // Create polygon series for night-time polygons
@@ -178,25 +160,6 @@
         var nightDataItem0 = nightSeries.pushDataItem({});
         var nightDataItem1 = nightSeries.pushDataItem({});
         var nightDataItem2 = nightSeries.pushDataItem({});
-
-// Create controls
-//         var container = chart.children.push(
-//             am5.Container.new(root, {
-//             })
-//         );
-//
-//         var slider = container.children.push(
-//             am5.Slider.new(root, {
-//             })
-//         );
-//
-//         slider.events.on("rangechanged", function () {
-//             updateDateNight(
-//                 (slider.get("start", 0) - 0.5) * am5.time.getDuration("day", 2) + baseTime
-//             );
-//         });
-
-        var currentDate = new Date();
 
         function updateDateNight(time) {
             var sunPosition = solarPosition(time);
@@ -227,7 +190,6 @@
         }, 60000);
 
         var offset = new Date().getTimezoneOffset() * 60 * 1000;
-//updateDateNight(new Date().getTime());
 
 // all sun position calculation is taken from: http://bl.ocks.org/mbostock/4597134
         function solarPosition(time) {
@@ -240,6 +202,25 @@
                 latitude: solarDeclination(centuries) * am5.math.DEGREES
             });
         }
+
+        var trajectorySeries = chart.series.push(am5map.MapLineSeries.new(root, {}));
+        trajectorySeries.mapLines.template.setAll({
+            stroke: am5.color(0xff9500),
+            strokeWidth: 2,
+            strokeOpacity: 0.6,
+            strokeDasharray: [4, 4]
+        })
+
+        window.setTrajectory = function(points) {
+            console.log("setTrajectory called with " + points.length + " points");
+            console.log("First point: " + JSON.stringify(points[0]));
+            trajectorySeries.data.setAll([{
+                geometry: {
+                    type: "LineString",
+                    coordinates: points.map(p => [p.lon, p.lat])
+                }
+            }]);
+        };
 // Equations based on NOAA’s Solar Calculator; all angles in RADIANS.
 // http://www.esrl.noaa.gov/gmd/grad/solcalc/
 
