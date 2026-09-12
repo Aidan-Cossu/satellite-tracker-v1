@@ -158,6 +158,16 @@ The C++ Orbit Engine and Python validation tools will eventually be developed as
 - [ ] Performance benchmarking
 - [ ] Automated plots and reports
 
+## Related Projects
+### Satellite Tracker Toolkit
+The [Satellite Tracker Toolkit](https://github.com/Aidan-Cossu/satellite-tracker-toolkit) is a separate Python project designed to analyse and validate satellite tracking data produced by this application.
+
+It provides tools for data validation, searching, statistical analysis, visualisation, and exporting results.
+
+The toolkit can work alongside this application, but both projects are designed to function independently. The Java Satellite Tracker does not require the Python toolkit to run, and the toolkit can analyse compatible satellite data without the Java application.
+
+The toolkit is part of the broader satellite software ecosystem surrounding this project.
+
 # License
 See the [```LICENSE```](https://github.com/Aidan-Cossu/satellite-tracker-v1/blob/main/LICENSE) file for information about the project's license.
 
