@@ -1,106 +1,161 @@
-<!-- Styles -->
-<style>
-    html, body, #mainContainer, #chartdiv {
-        width: 100%;
-        height: 100%;
-        margin: 0;
-        padding: 0;
-        overflow: hidden;
-        background-color: #1a1c23;
-    }
-</style>
+<!DOCTYPE html>
+<!--
+  Interactive world map used by the Satellite Tracker (embedded in a JavaFX WebView by MapPanel.java).
 
-<!-- Resources -->
-<script src="https://cdn.amcharts.com/lib/5/index.js"></script>
-<script src="https://cdn.amcharts.com/lib/5/map.js"></script>
-<script src="https://cdn.amcharts.com/lib/5/geodata/worldLow.js"></script>
-<script src="https://cdn.amcharts.com/lib/5/themes/Animated.js"></script>
-<script src="https://cdn.amcharts.com/lib/5/themes/Dark.js"></script>
+  Built with amCharts 5. The libraries are loaded from the local "amcharts/" folder (placed next to this
+  file in the resources) so the map also works offline. amCharts is free to use with its logo
+  displayed; see https://www.amcharts.com/licenses/ for the terms.
 
-<!-- Chart code -->
+  Java calls these functions (see MapPanel.java):
+    window.updateSatellites(list)       - set/move the satellite markers
+    window.setSelectedSatellite(name)   - highlight one marker
+    window.setTrajectory(points)        - draw the predicted ground track
+  and this page calls back into Java via:
+    window.onSatelliteClicked(name)     - installed by MapPanel when the page has loaded
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Satellite Tracker</title>
+
+    <style>
+        /* Fill the whole WebView and hide scrollbars. */
+        html, body, #mainContainer, #chartdiv {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #1a1c23;
+        }
+    </style>
+
+    <script src="amcharts/index.js"></script>
+    <script src="amcharts/map.js"></script>
+    <script src="amcharts/worldLow.js"></script>
+    <script src="amcharts/Animated.js"></script>
+    <script src="amcharts/Dark.js"></script>
+</head>
+
+<body>
+<div id="mainContainer">
+    <div id="chartdiv"></div>
+</div>
+
 <script>
     am5.ready(function() {
 
-// Create root element
-// https://www.amcharts.com/docs/v5/getting-started/#Root_element
+        console.log("am5.ready started");
+
         var root = am5.Root.new("chartdiv");
 
-        root._logo.dispose();
+        // Keep the amCharts logo (required by the free licence), just centre it at the top.
+        root._logo.setAll({
+            x: am5.p50,
+            centerX: am5.p50,
+            y: 5,
+            centerY: 0
+        });
 
-        var baseTime = new Date().getTime() - am5.time.getDuration("day", 2);
-
-// Set themes
-// https://www.amcharts.com/docs/v5/concepts/themes/
         root.setThemes([
             am5themes_Animated.new(root),
             am5themes_Dark.new(root)
         ]);
 
-// Create the map chart
-// https://www.amcharts.com/docs/v5/charts/map-chart/
-        var selectedSatelliteName = null;
-
-        window.setSelectedSatellite = function(name) {
-            selectedSatelliteName = name;
-            satelliteSeries.data.each(function(dataItem) {
-                satelliteSeries.data.setAll(satelliteSeries.data.values);
-            });
-        };
-
-        var chart = root.container.children.push(am5map.MapChart.new(root, {
-            panX: false,
-            panY: false,
-            wheelX: "none",
-            wheelY: "none",
-            projection: am5map.geoEquirectangular(),
-            paddingTop: 0,
-            paddingBottom: 0,
-            paddingLeft: 0,
-            paddingRight: 0,
-        }));
+        // ---- Map chart ---------------------------------------------------------------------
+        // Equirectangular projection: longitude/latitude map linearly to x/y, so the map is
+        // a flat rectangle. Panning and zooming are disabled because the whole world is shown.
+        var chart = root.container.children.push(
+            am5map.MapChart.new(root, {
+                panX: false,
+                panY: false,
+                wheelX: "none",
+                wheelY: "none",
+                projection: am5map.geoEquirectangular(),
+                paddingTop: 0,
+                paddingBottom: 0,
+                paddingLeft: 0,
+                paddingRight: 0
+            })
+        );
 
         chart.seriesContainer.setAll({
             draggable: false,
             resizable: false
-        })
+        });
 
-        chart.chartContainer.set("background", am5.Rectangle.new(root, {
-            fill: am5.color(0x1a1c23),
-            fillOpacity: 1
-        }));
+        chart.chartContainer.set("background",
+            am5.Rectangle.new(root, {
+                fill: am5.color(0x1a1c23),
+                fillOpacity: 1
+            })
+        );
+
+        var chart = root.container.children.push(
+            am5map.MapChart.new(root, {
+                panX: false,
+                panY: false,
+                wheelX: "none",
+                wheelY: "none",
+                projection: am5map.geoEquirectangular(),
+                paddingTop: 0,
+                paddingBottom: 0,
+                paddingLeft: 0,
+                paddingRight: 0,
+                doubleClickZoom: false
+            })
+        );
 
         chart.set("homeZoomLevel", 1);
-        chart.set("homeGeoPoint", { longitude: 0, latitude: 0 });
+        chart.set("homeGeoPoint", {
+            longitude: 0,
+            latitude: 0
+        });
 
-// Create series for background fill
-// https://www.amcharts.com/docs/v5/charts/map-chart/map-polygon-series/#Background_polygon
-        var backgroundSeries = chart.series.push(am5map.MapPolygonSeries.new(root, {}));
+        // ---- Layers ------------------------------------------------------------------------
+        // Series are drawn in the order they are added (first = bottom).
+
+        // Invisible full-world rectangle (keeps the map area filled with the background colour).
+        var backgroundSeries = chart.series.push(
+            am5map.MapPolygonSeries.new(root, {})
+        );
+
         backgroundSeries.mapPolygons.template.setAll({
             fill: root.interfaceColors.get("alternativeBackground"),
             fillOpacity: 0,
             strokeOpacity: 0
         });
 
-// Add background polygon
-// https://www.amcharts.com/docs/v5/charts/map-chart/map-polygon-series/#Background_polygon
         backgroundSeries.data.push({
             geometry: am5map.getGeoRectangle(90, 180, -90, -180)
         });
 
-// Create main polygon series for countries
-// https://www.amcharts.com/docs/v5/charts/map-chart/map-polygon-series/
-        var polygonSeries = chart.series.push(am5map.MapPolygonSeries.new(root, {
-            geoJSON: am5geodata_worldLow
-        }));
+        // Countries.
+        var polygonSeries = chart.series.push(
+            am5map.MapPolygonSeries.new(root, {
+                geoJSON: am5geodata_worldLow
+            })
+        );
 
+        // ---- Satellite markers -------------------------------------------------------------
+        var selectedSatelliteName = null;
 
-// Satellite point series
-        var satelliteSeries = chart.series.push(am5map.MapPointSeries.new(root, {}));
+        var satelliteSeries = chart.series.push(
+            am5map.MapPointSeries.new(root, {})
+        );
 
+        // A "bullet" is the visual for one data item: a dot plus a name label.
+        // The selected satellite is drawn larger and in gold.
         satelliteSeries.bullets.push(function(root, series, dataItem) {
-            var container = am5.Container.new(root, { cursorOverStyle: "pointer" });
 
-            var isSelected = dataItem.dataContext && dataItem.dataContext.name === selectedSatelliteName;
+            var name = dataItem.dataContext.name;
+            var isSelected = name === selectedSatelliteName;
+
+            var container = am5.Container.new(root, {
+                cursorOverStyle: "pointer",
+                interactive: true
+            });
 
             var circle = am5.Circle.new(root, {
                 radius: isSelected ? 9 : 6,
@@ -121,35 +176,77 @@
             container.children.push(circle);
             container.children.push(label);
 
-            container.events.on("click", function(ev) {
-                var dataItem = ev.target.dataItem;
-                var name = dataItem && dataItem.dataContext ? dataItem.dataContext.name : null;
+            // Tell Java which satellite was clicked.
+            container.events.on("click", function() {
                 if (name && window.onSatelliteClicked) {
                     window.onSatelliteClicked(name);
                 }
             });
 
-            return am5.Bullet.new(root, { sprite: container });
+            return am5.Bullet.new(root, {
+                sprite: container
+            });
         });
 
+        // Called by Java about once per second. Replacing the data re-creates the bullets,
+        // which is simple and fast enough for a handful of satellites.
         window.updateSatellites = function(satellites) {
+
             var data = satellites.map(function(s) {
                 return {
-                    geometry: { type: "Point", coordinates: [s.lon, s.lat] },
+                    longitude: s.lon,
+                    latitude: s.lat,
                     name: s.name
                 };
             });
+
             satelliteSeries.data.setAll(data);
         };
 
-// Create point series for Sun icon
-// https://www.amcharts.com/docs/v5/charts/map-chart/map-point-series/
-        var sunSeries = chart.series.push(am5map.MapPointSeries.new(root, {}));
-        var sunDataItem = sunSeries.pushDataItem({});
+        // Called by Java when the user selects a satellite. Re-setting the same data makes the
+        // bullet function run again, so the highlight is applied.
+        window.setSelectedSatellite = function(name) {
 
-// Create polygon series for night-time polygons
-// https://www.amcharts.com/docs/v5/charts/map-chart/map-polygon-series/
-        var nightSeries = chart.series.push(am5map.MapPolygonSeries.new(root, {}));
+            selectedSatelliteName = name;
+
+            satelliteSeries.data.setAll(
+                satelliteSeries.data.values.slice()
+            );
+        };
+
+        console.log(
+            "updateSatellites registered:",
+            typeof window.updateSatellites
+        );
+
+        // ---- Optional sun marker ----------------------------------------------------------
+        // UNCOMMENT THESE LINES IF YOU WANT TO HAVE A SUN APPEAR
+        // var sunSeries = chart.series.push(
+        //     am5map.MapPointSeries.new(root, {})
+        // );
+        //
+        // sunSeries.bullets.push(function(root) {
+        //
+        //     var sun = am5.Circle.new(root, {
+        //         radius: 9,
+        //         fill: am5.color(0xffc300),
+        //         stroke: am5.color(0xffffff),
+        //         strokeWidth: 2
+        //     });
+        //
+        //     return am5.Bullet.new(root, {
+        //         sprite: sun
+        //     });
+        // });
+        //
+        // var sunDataItem = sunSeries.pushDataItem({});
+
+        // ---- Day/night overlay -------------------------------------------------------------
+        // The night side is a circle (radius ~90 degrees) centred on the point opposite the sun.
+        // Three slightly different radii stacked on each other give a soft twilight edge.
+        var nightSeries = chart.series.push(
+            am5map.MapPolygonSeries.new(root, {})
+        );
 
         nightSeries.mapPolygons.template.setAll({
             fill: am5.color(0x000000),
@@ -157,42 +254,50 @@
             strokeOpacity: 0
         });
 
+        // Not clickable, so it never blocks clicks on the markers below it.
+        nightSeries.mapPolygons.template.set("forceInactive", true);
+
         var nightDataItem0 = nightSeries.pushDataItem({});
         var nightDataItem1 = nightSeries.pushDataItem({});
         var nightDataItem2 = nightSeries.pushDataItem({});
 
         function updateDateNight(time) {
+
             var sunPosition = solarPosition(time);
 
-            var customOffset = -40;
+            // UNCOMMENT THESE LINES IF YOU WANT TO HAVE A SUN APPEAR
+            // sunDataItem.set("longitude", sunPosition.longitude);
+            // sunDataItem.set("latitude", sunPosition.latitude);
 
-            sunDataItem.set("longitude", sunPosition.longitude);
-            sunDataItem.set("latitude", sunPosition.latitude);
+            var nightLon = sunPosition.longitude + 180;
 
-            var nightLon = sunPosition.longitude + 180 + customOffset;
-
-            var nightPosition = am5map.normalizeGeoPoint({
-                longitude: nightLon,
-                latitude: -sunPosition.latitude
-            });
+            var nightPosition = am5map.normalizeGeoPoint({longitude: nightLon, latitude: -sunPosition.latitude});
 
             nightDataItem0.set("geometry", am5map.getGeoCircle(nightPosition, 92));
+
             nightDataItem1.set("geometry", am5map.getGeoCircle(nightPosition, 90));
+
             nightDataItem2.set("geometry", am5map.getGeoCircle(nightPosition, 88));
         }
 
-        updateDateNight(new Date().getTime());
+        updateDateNight(Date.now());
 
+        // The terminator moves 0.25 degrees per minute, so once a minute is plenty.
         setInterval(function() {
-            var now = new Date();
-            var utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
-            updateDateNight(utcTime);
+            updateDateNight(Date.now());
         }, 60000);
 
-        var offset = new Date().getTimezoneOffset() * 60 * 1000;
-
-// all sun position calculation is taken from: http://bl.ocks.org/mbostock/4597134
+        // ---- Sun position ------------------------------------------------------------------
+        // Returns the point on Earth where the sun is directly overhead.
+        // `time` is a UTC epoch in milliseconds.
+        //
+        // Longitude: the sun is above longitude 0 at 12:00 UTC and moves WEST by 15 degrees per
+        // hour, so it must Decrease through the day. 00:00 UTC -> 180, 06:00 -> 90 (east),
+        // 12:00 -> 0, 18:00 -> -90 (west).
+        // Latitude: the solar declination (changes with the seasons, +-23.44 degrees).
+        // The equation of time corrects for Earth's orbital eccentricity and axial tilt.
         function solarPosition(time) {
+
             var centuries = (time - Date.UTC(2000, 0, 1, 12)) / 864e5 / 36525;
 
             var longitude = ((time % 86400000) / 86400000) * 360 - 180;
@@ -203,34 +308,19 @@
             });
         }
 
-        var trajectorySeries = chart.series.push(am5map.MapLineSeries.new(root, {}));
-        trajectorySeries.mapLines.template.setAll({
-            stroke: am5.color(0xff9500),
-            strokeWidth: 2,
-            strokeOpacity: 0.6,
-            strokeDasharray: [4, 4]
-        })
-
-        window.setTrajectory = function(points) {
-            console.log("setTrajectory called with " + points.length + " points");
-            console.log("First point: " + JSON.stringify(points[0]));
-            trajectorySeries.data.setAll([{
-                geometry: {
-                    type: "LineString",
-                    coordinates: points.map(p => [p.lon, p.lat])
-                }
-            }]);
-        };
-// Equations based on NOAA’s Solar Calculator; all angles in RADIANS.
-// http://www.esrl.noaa.gov/gmd/grad/solcalc/
-
+        // The functions below are based on NOAA's Solar Calculator
+        // (http://www.esrl.noaa.gov/gmd/grad/solcalc/) and the example at
+        // http://bl.ocks.org/mbostock/4597134. All angles are in RADIANS, and
+        // `centuries` means Julian centuries since J2000.
         function equationOfTime(centuries) {
-            var e = eccentricityEarthOrbit(centuries),
-                m = solarGeometricMeanAnomaly(centuries),
-                l = solarGeometricMeanLongitude(centuries),
-                y = Math.tan(obliquityCorrection(centuries) / 2);
+
+            var e = eccentricityEarthOrbit(centuries);
+            var m = solarGeometricMeanAnomaly(centuries);
+            var l = solarGeometricMeanLongitude(centuries);
+            var y = Math.tan(obliquityCorrection(centuries) / 2);
 
             y *= y;
+
             return (
                 y * Math.sin(2 * l) -
                 2 * e * Math.sin(m) +
@@ -251,36 +341,49 @@
             return (
                 solarTrueLongitude(centuries) -
                 (0.00569 +
-                    0.00478 * Math.sin((125.04 - 1934.136 * centuries) * am5.math.RADIANS)) *
-                am5.math.RADIANS
+                    0.00478 * Math.sin(
+                        (125.04 - 1934.136 * centuries) *
+                        am5.math.RADIANS
+                    )
+                ) * am5.math.RADIANS
             );
         }
 
         function solarTrueLongitude(centuries) {
             return (
-                solarGeometricMeanLongitude(centuries) + solarEquationOfCenter(centuries)
+                solarGeometricMeanLongitude(centuries) +
+                solarEquationOfCenter(centuries)
             );
         }
 
         function solarGeometricMeanAnomaly(centuries) {
             return (
-                (357.52911 + centuries * (35999.05029 - 0.0001537 * centuries)) *
-                am5.math.RADIANS
+                (357.52911 +
+                    centuries * (35999.05029 - 0.0001537 * centuries)
+                ) * am5.math.RADIANS
             );
         }
 
         function solarGeometricMeanLongitude(centuries) {
-            var l = (280.46646 + centuries * (36000.76983 + centuries * 0.0003032)) % 360;
+            var l = (
+                280.46646 +
+                centuries * (36000.76983 + centuries * 0.0003032)
+            ) % 360;
+
             return ((l < 0 ? l + 360 : l) / 180) * Math.PI;
         }
 
         function solarEquationOfCenter(centuries) {
             var m = solarGeometricMeanAnomaly(centuries);
+
             return (
-                (Math.sin(m) * (1.914602 - centuries * (0.004817 + 0.000014 * centuries)) +
-                    Math.sin(m + m) * (0.019993 - 0.000101 * centuries) +
-                    Math.sin(m + m + m) * 0.000289) *
-                am5.math.RADIANS
+                (
+                    Math.sin(m) *
+                    (1.914602 - centuries * (0.004817 + 0.000014 * centuries)) +
+                    Math.sin(m + m) *
+                    (0.019993 - 0.000101 * centuries) +
+                    Math.sin(m + m + m) * 0.000289
+                ) * am5.math.RADIANS
             );
         }
 
@@ -288,30 +391,81 @@
             return (
                 meanObliquityOfEcliptic(centuries) +
                 0.00256 *
-                Math.cos((125.04 - 1934.136 * centuries) * am5.math.RADIANS) *
-                am5.math.RADIANS
+                Math.cos(
+                    (125.04 - 1934.136 * centuries) *
+                    am5.math.RADIANS
+                ) * am5.math.RADIANS
             );
         }
 
         function meanObliquityOfEcliptic(centuries) {
             return (
-                (23 +
-                    (26 +
-                        (21.448 -
-                            centuries * (46.815 + centuries * (0.00059 - centuries * 0.001813))) /
-                        60) /
-                    60) *
-                am5.math.RADIANS
+                (
+                    23 +
+                    (
+                        26 +
+                        (
+                            21.448 -
+                            centuries * (
+                                46.815 +
+                                centuries * (
+                                    0.00059 - centuries * 0.001813
+                                )
+                            )
+                        ) / 60
+                    ) / 60
+                ) * am5.math.RADIANS
             );
         }
 
         function eccentricityEarthOrbit(centuries) {
-            return 0.016708634 - centuries * (0.000042037 + 0.0000001267 * centuries);
+            return (
+                0.016708634 -
+                centuries * (0.000042037 + 0.0000001267 * centuries)
+            );
         }
+
+        // ---- Predicted ground track --------------------------------------------------------
+        // Dashed orange line. Added after the markers, so it is drawn above them; it is made
+        // non-interactive below so clicks still reach the markers.
+        var trajectorySeries = chart.series.push(am5map.MapLineSeries.new(root, {}));
+
+        trajectorySeries.mapLines.template.setAll({
+            stroke: am5.color(0xff9500),
+            strokeWidth: 2,
+            strokeOpacity: 0.6,
+            strokeDasharray: [4, 4]
+        });
+
+        // Not clickable, so it never blocks clicks on the markers.
+        trajectorySeries.mapLines.template.set("forceInactive", true);
+
+        // points: [{lat, lon}, ...]. Fewer than 2 points clears the line.
+        // Coordinates are passed as a GeoJSON LineString ([lon, lat] order!).
+        window.setTrajectory = function(points) {
+            if (points.length < 2) {
+                trajectorySeries.data.clear();
+                return;
+            }
+
+            trajectorySeries.data.setAll([{
+                geometry: {
+                    type: "LineString",
+                    coordinates: points.map(function(p) {
+                        return [p.lon, p.lat];
+                    })
+                }
+            }]);
+        };
+
+        console.log("Map initialization complete.");
+
+        if (window.javaBridge) {
+            window.javaBridge.onMapReady();
+        }
+
     }); // end am5.ready()
 </script>
 
-<!-- HTML -->
-<div id="mainContainer">
-    <div id="chartdiv"></div>
-</div>
+</body>
+</html>

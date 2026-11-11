@@ -9,6 +9,16 @@ import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+/**
+ * Left-hand control panel. It has two "cards" that are swapped with a {@link CardLayout}:
+ *
+ * main: show-all / filter buttons, the orbit-prediction slider and a notes box
+ * describing the selected satellite.
+ * filter: one toggle per organisation (ISS, NASA, ESA, ...). Selecting
+ * organisations limits which satellites are fetched and shown.
+ *
+ * Fonts and row heights are scaled when the window is resized (see {@link #scaleFonts(double)}).
+ */
 public class SidePanel {
     private static final Color BG_DARK = new Color(11, 15, 26);
     private static final Color PANEL = new Color(18, 24, 38);
@@ -16,9 +26,11 @@ public class SidePanel {
     private static final Color TEXT_PRIMARY = new Color(230, 237, 243);
     private static final Color TEXT_SECONDARY = new Color(154, 164, 178);
 
+    // Shared with FetchTask: an empty set means "no filter, show everything".
     private final Set<String> selectedOrgs;
     private final FetchTask fetchTask;
 
+    // Remembered so scaleFonts() can resize them later.
     private final List<JLabel> allLabels = new ArrayList<>();
     private final List<JButton> allButtons = new ArrayList<>();
     private final List<JPanel> allPanels = new ArrayList<>();
@@ -29,6 +41,7 @@ public class SidePanel {
     private JLabel sliderNote;
     private JSlider slider;
 
+    // Called with the chosen prediction length in minutes when the slider is released.
     private final Consumer<Integer> onSliderChanged;
 
     private JLabel styledLabel(String text, Font font) {
@@ -44,9 +57,11 @@ public class SidePanel {
         this.onSliderChanged = onSliderChanged;
     }
 
+    /** Builds the whole panel. Must be called on the EDT. */
     public JPanel buildPanel () {
         Font dataFont = new Font("Monospaced", Font.BOLD, 12);
 
+        // Distinct organisation names, in the order they appear in SatelliteList.
         List<String> organisation = SatelliteList.satellites().stream()
                 .map(SatelliteRecord::organisation)
                 .distinct()
@@ -76,6 +91,7 @@ public class SidePanel {
         allButtons.add(btnPrev);
         allButtons.add(btnShowFilter);
 
+        // --- Notes box -------------------------------------------------------------------
         notesTitle = new JLabel("NOTES:");
         notesTitle.setFont(dataFont);
         notesTitle.setForeground(TEXT_SECONDARY);
@@ -92,6 +108,7 @@ public class SidePanel {
         notesArea.setAlignmentX(Component.LEFT_ALIGNMENT);
         notesArea.setMaximumSize(new Dimension(290, 120));
 
+        // --- Orbit prediction slider (1-24 hours) -----------------------------------------
         sliderNote = new JLabel("⬇ orbit prediction ⬇");
         sliderNote.setFont(dataFont);
         sliderNote.setForeground(ACCENT);
@@ -130,12 +147,15 @@ public class SidePanel {
         slider.setMajorTickSpacing(6);
         slider.setMinorTickSpacing(1);
 
+        // Only react when the user lets go of the slider, not on every pixel of movement,
+        // because each change triggers an orbit calculation.
         slider.addChangeListener(e -> {
             if (!slider.getValueIsAdjusting()) {
                 onSliderChanged.accept(slider.getValue() * 60);
             }
         });
 
+        // --- Filter card: one clickable row per organisation ------------------------------
         filter.add(btnPrev);
 
         List<JPanel> orgPanels = new ArrayList<>();
@@ -152,11 +172,13 @@ public class SidePanel {
             orgLabel.setForeground(TEXT_PRIMARY);
             orgPanel.add(orgLabel, BorderLayout.CENTER);
             orgPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
-            orgLabel.setHorizontalAlignment(SwingUtilities.CENTER);
+            orgLabel.setHorizontalAlignment(SwingConstants.CENTER);
 
+            // mousePressed instead of mouseClicked: "clicked" is lost if the mouse moves slightly.
             orgPanel.addMouseListener(new java.awt.event.MouseAdapter() {
                 @Override
-                public void mouseClicked(java.awt.event.MouseEvent e) {
+                public void mousePressed(java.awt.event.MouseEvent e) {
+                    // Toggle: highlighted = included in the filter.
                     if (selectedOrgs.contains(org)) {
                         selectedOrgs.remove(org);
                         orgPanel.setBackground(PANEL);
@@ -166,6 +188,7 @@ public class SidePanel {
                         orgPanel.setBackground(ACCENT);
                         orgLabel.setForeground(BG_DARK);
                     }
+                    // Refresh right away, off the EDT, so the map reflects the filter immediately.
                     new Thread(() -> fetchTask.fetchNow()).start();
                 }
             });
@@ -179,9 +202,10 @@ public class SidePanel {
             filter.add(orgPanel);
         }
 
+        // "show all" clears the filter and un-highlights every organisation.
         showAll.addActionListener(e -> {
+            selectedOrgs.clear(); // clear first, then fetch, so the fetch sees the empty filter
             new Thread(() -> fetchTask.fetchNow()).start();
-            selectedOrgs.clear();
             for (int i = 0; i < orgPanels.size(); i++) {
                 orgPanels.get(i).setBackground(PANEL);
                 orgLabels.get(i).setForeground(TEXT_PRIMARY);
@@ -189,6 +213,7 @@ public class SidePanel {
             cardLayout.show(cardPanel, "main");
         });
 
+        // --- Button styling ----------------------------------------------------------------
         showAll.setFont(dataFont);
 
         btnPrev.setBorderPainted(false);
@@ -235,10 +260,12 @@ public class SidePanel {
         return cardPanel;
     }
 
+    /** Current slider value converted to minutes. */
     public int getTrajectoryMinutes() {
         return  slider.getValue() * 60;
     }
 
+    /** Scales fonts and row heights (scale 1.0 = default size) when the window is enlarged. */
     public void scaleFonts(double scale) {
         int fontSize = Math.max(12, (int)(12 * scale));
         Font font = new Font("Monospaced", Font.BOLD, fontSize);
@@ -249,10 +276,11 @@ public class SidePanel {
             b.setFont(font);
             b.setMaximumSize(new Dimension(Integer.MAX_VALUE, rowHeight));
             b.setPreferredSize(new Dimension(0, rowHeight));
-            sliderNote.setFont(font);
-            sliderNote.setMaximumSize(new Dimension(Integer.MAX_VALUE, rowHeight));
-            sliderNote.setPreferredSize(new Dimension(0, rowHeight));
         }
+
+        sliderNote.setFont(font);
+        sliderNote.setMaximumSize(new Dimension(Integer.MAX_VALUE, rowHeight));
+        sliderNote.setPreferredSize(new Dimension(0, rowHeight));
 
         for (JLabel l : allLabels) {
             l.setFont(font);
@@ -264,6 +292,7 @@ public class SidePanel {
         }
     }
 
+    /** Shows the notes of the given satellite (see the last field of {@link SatelliteRecord}). */
     public void updateNotes(String satelliteName) {
         SatelliteList.satellites().stream()
                 .filter(s -> s.name().equals(satelliteName))
